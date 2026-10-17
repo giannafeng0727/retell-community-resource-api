@@ -1,0 +1,15 @@
+{
+  "name": "retell-community-resource-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vercel API used by the Retell search_community_resources custom function",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node scripts/test.js && node scripts/test-assistance.js && node scripts/test-reunification.js && node scripts/test-supabase.js"
+  },
+  "devDependencies": {
+    "vercel": "^64.3.1"
+  }
+}
