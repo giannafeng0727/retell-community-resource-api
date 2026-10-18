@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "build:frontend": "python3 frontend/src/build.py",
     "test": "node scripts/test.js && node scripts/test-assistance.js && node scripts/test-reunification.js && node scripts/test-supabase.js"
   },
   "devDependencies": {

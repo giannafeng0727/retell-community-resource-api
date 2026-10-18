@@ -51,6 +51,16 @@ Callback queue endpoint:
 POST https://YOUR-PROJECT.vercel.app/api/assistance-requests/create
 ```
 
+Live dashboard data endpoint:
+
+```text
+GET https://YOUR-PROJECT.vercel.app/api/assistance-requests/list
+```
+
+The dashboard polls this endpoint every 10 seconds. The current deployment does
+not require dashboard authentication, so callback numbers and approximate
+locations returned by this endpoint are publicly accessible.
+
 The callback endpoint requires `Authorization: Bearer RETELL_CALLBACK_API_KEY`.
 It rejects immediate-danger requests because emergency escalation must happen
 before this function is called.

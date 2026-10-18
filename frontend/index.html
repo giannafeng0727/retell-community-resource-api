@@ -1,11 +1,3 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<style>[hidden]{display:none!important}body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
-</head>
-<body>
 <title>Night Desk Malibu</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -434,12 +426,16 @@ const MAPDATA = {"land":{"type":"FeatureCollection","features":[{"type":"Feature
 'use strict';
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LIVE = new URLSearchParams(location.search).get('demo') !== '1';
 
 /* ---------- clock ---------- */
 const T0 = 16 * 60 + 2;          // fire first reported at 4:02 PM (drill minute 0)
 const LOAD_T = 9;                // the page opens at 4:11 PM
 const SEC_PER_MIN = 10;          // 1 drill minute = 10 real seconds at 1x
-const fmt = m => { const x = Math.floor(T0 + m + 1e-6); let h = Math.floor(x / 60) % 24; const mm = ((x % 60) + 60) % 60; const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return h + ':' + String(mm).padStart(2, '0') + ' ' + ap; };
+const fmt = m => {
+  if (LIVE) return new Date(m * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const x = Math.floor(T0 + m + 1e-6); let h = Math.floor(x / 60) % 24; const mm = ((x % 60) + 60) % 60; const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return h + ':' + String(mm).padStart(2, '0') + ' ' + ap;
+};
 const dur = m => { m = Math.max(0, Math.floor(m + 1e-6)); return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min'; };
 
 /* ---------- random ---------- */
@@ -579,18 +575,18 @@ const zones = () => ZONES;
 let S;
 function fresh(scen) {
   seed = 20261017;
-  S = { t: -25, mode: 'everyday', scen: scen || 'small', paused: false, cases: [], sel: null, filter: 'open', q: '', limit: 40,
+  S = { t: LIVE ? Date.now() / 60000 : -25, mode: 'everyday', scen: scen || 'small', paused: false, cases: [], sel: null, filter: 'open', q: '', limit: 40,
         crisisAt: null, alertAt: null, calls: 0, fireCalls: 0, info: 0, heroIdx: 0, nextId: 1, view: 'main', scoredAt: -99,
         reps: REP_NAMES.map((n, i) => ({ n: 'Rep ' + String(i + 1).padStart(2, '0') + ' · ' + n, on: i < 3, onAt: null, busy: null, until: 0, leave: false })) };
 }
 const byId = id => S.cases.find(c => c.id === id);
 
 /* ---------- map state lookups ---------- */
-function fireStage(t = S.t) { let s = null; for (const st of MAPDATA.stages) if (st.m <= Math.min(t, sc().maxStage)) s = st; return s; }
-const official = (t = S.t) => t >= 14;
+function fireStage(t = S.t) { if (LIVE) return null; let s = null; for (const st of MAPDATA.stages) if (st.m <= Math.min(t, sc().maxStage)) s = st; return s; }
+const official = (t = S.t) => !LIVE && t >= 14;
 function zoneKind(z, t = S.t) { let k = null; for (const s of z.steps) if (s[0] <= t) k = s[1]; return k; }
 function zoneAt(p) { let best = null; for (const z of zones()) { const k = zoneKind(z); if (k && inPoly(p, z.g)) { if (k === 'order') return 'order'; best = 'warning'; } } return best; }
-const closuresNow = () => sc().closures ? MAPDATA.closures.filter(c => c.m <= S.t) : [];
+const closuresNow = () => !LIVE && sc().closures ? MAPDATA.closures.filter(c => c.m <= S.t) : [];
 
 /* ---------- score (PRD v2) ---------- */
 function hazard(c) {
@@ -793,11 +789,82 @@ function escalate(c, t, text) { c.danger = true; c.dangerAt = t; c.calls++; c.ti
 
 function boot(scen) {
   fresh(scen);
-  ZONES = sc().zones(); HLIST = sc().heroes ? sc().heroes.map(HERO_BY) : HEROES;
+  ZONES = LIVE ? [] : sc().zones(); HLIST = LIVE ? [] : (sc().heroes ? sc().heroes.map(HERO_BY) : HEROES);
+  if (LIVE) return;
   while (S.t < LOAD_T) step(0.05);
   S.t = LOAD_T; scoreAll();
   const top = sorted(S.cases.filter(c => c.status !== 'resolved'), true)[0];
   S.sel = top ? top.id : null;
+}
+
+/* ---------- live Retell requests ---------- */
+const LANGUAGE_NAMES = { 'en': 'English', 'en-us': 'English', 'es': 'Spanish', 'es-419': 'Spanish', 'zh': 'Mandarin', 'zh-cn': 'Mandarin', 'ko': 'Korean', 'ja': 'Japanese', 'de': 'German', 'fr': 'French' };
+function liveLanguage(value) {
+  const key = String(value || 'en').toLowerCase();
+  return LANGUAGE_NAMES[key] || LANGUAGE_NAMES[key.split('-')[0]] || value || 'English';
+}
+function liveNeed(row) {
+  if (row.medical_power_required) return 'medical_device_power';
+  if (row.accessibility_required) return 'mobility_assistance';
+  if (row.needs_transportation || row.resource_type === 'transportation') return 'evacuation_transport';
+  if (row.has_pet || row.has_service_animal) return 'pets';
+  if (row.resource_type === 'shelter') return 'shelter';
+  if (row.resource_type === 'food' || row.resource_type === 'water') return 'food_water';
+  return 'other';
+}
+function livePoint(row) {
+  if (Number.isFinite(row.longitude) && Number.isFinite(row.latitude)) return [row.longitude, row.latitude];
+  const text = String(row.caller_location || '').toLowerCase();
+  for (const key of ['zuma', 'dume', 'paradise', 'latigo', 'corral', 'escondido', 'pch', 'pepperdine', 'solstice', 'malibu creek', 'kanan', 'pier', 'matador']) {
+    if (text.includes(key)) return (key === 'pepperdine' ? HOT.pep : key === 'malibu creek' ? HOT.mcsp : HOT[key]).c.slice();
+  }
+  let hash = 0; for (const ch of String(row.id || text)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return [-118.75 + ((hash % 1000) / 999 - 0.5) * 0.12, 34.04 + (((hash >>> 10) % 1000) / 999 - 0.5) * 0.05];
+}
+function liveCase(row, old) {
+  const at = Number.isFinite(Date.parse(row.created_at)) ? Date.parse(row.created_at) / 60000 : S.t;
+  const resolved = ['resolved', 'closed', 'completed'].includes(String(row.status || '').toLowerCase());
+  const reviewing = ['in_progress', 'review', 'assigned'].includes(String(row.status || '').toLowerCase());
+  const phoneTail = String(row.callback_number || '').replace(/\D/g, '').slice(-4);
+  const need = liveNeed(row);
+  const c = {
+    id: String(row.id), code: row.reference_code || String(row.id).slice(0, 8), kind: 'live', hot: 'live',
+    name: row.caller_name || (phoneTail ? `Caller ••••${phoneTail}` : 'Retell caller'), phone: row.callback_number || 'Not provided',
+    origin: 'us', lang: liveLanguage(row.preferred_language), visitor: false, home: 'Retell caller', age: null, elderly: false,
+    people: Math.max(1, Number(row.people_count) || 1), kids: Math.max(0, Number(row.children_count) || 0), need,
+    access: !!row.accessibility_required, medpower: !!row.medical_power_required, transport: !!row.needs_transportation,
+    pet: !!row.has_pet || !!row.has_service_animal, place: row.caller_location || 'Location not provided',
+    conf: CONF[row.location_confidence] ? row.location_confidence : 'unknown', loc: livePoint(row), addr: row.caller_location || 'Location not provided',
+    at, calls: 1, danger: false, dangerAt: null, casualty: 'None reported', bad: false, childAlone: false,
+    status: resolved ? 'resolved' : reviewing ? 'review' : 'saved', rep: reviewing ? 'Rep 00 · Coordinator' : null,
+    resolvedAt: resolved ? (Date.parse(row.updated_at || row.created_at) / 60000) : null,
+    reason: resolved ? 'Completed in Supabase' : null, timeline: [[at, 'Request saved by Retell · ' + (row.reference_code || row.id)]],
+    convo: [['c', row.conversation_summary || `Requested ${NEED[need][1].toLowerCase()} at ${row.caller_location || 'an unknown location'}.`], ['a', `Request saved for coordinator follow-up${row.reference_code ? ' · ' + row.reference_code : ''}.`]],
+    live: true, isNew: !old
+  };
+  score(c);
+  c.score = Math.max(0, Math.min(100, Number(row.priority_score) || c.score));
+  c.tier = row.priority === 'critical' ? 0 : row.priority === 'high' ? 1 : row.priority === 'normal' ? 2 : 3;
+  return c;
+}
+let liveLoading = false;
+async function syncLiveCases() {
+  if (!LIVE || liveLoading) return;
+  liveLoading = true;
+  try {
+    S.t = Date.now() / 60000;
+    const response = await fetch('/api/assistance-requests/list?limit=200', { cache: 'no-store' });
+    const body = await response.json();
+    if (!response.ok || !body.success || !Array.isArray(body.requests)) throw new Error(body.error || 'Unable to load requests');
+    const previous = new Map(S.cases.map(c => [c.id, c]));
+    S.cases = body.requests.map(row => liveCase(row, previous.get(String(row.id))));
+    S.calls = S.cases.length; S.fireCalls = 0; S.alertAt = null;
+    if (!byId(S.sel)) S.sel = S.cases[0]?.id || null;
+    renderAll();
+  } catch (error) {
+    console.error('Live request sync failed', error);
+    if (!S.cases.length) toast('Could not load live Retell requests. Retrying…');
+  } finally { liveLoading = false; }
 }
 
 /* ---------- list ---------- */
@@ -843,7 +910,7 @@ function renderList(force) {
   if (listHover && !force) { listPending = true; const n = $('#sortNote'); if (n && !n.querySelector('.paused')) n.insertAdjacentHTML('beforeend', ' · <span class="paused">Updates paused while you point at the list</span>'); return; }
   listPending = false;
   const crisis = S.mode === 'crisis';
-  $('#sortNote').innerHTML = crisis ? 'Sorted by <b>severity score</b>, highest first' : 'Sorted by <b>arrival</b>, oldest first · switch to crisis mode to sort by severity score';
+  $('#sortNote').innerHTML = crisis ? 'Sorted by <b>severity score</b>, highest first' : LIVE ? 'Live Retell requests · refreshes every 10 seconds · sorted by <b>arrival</b>' : 'Sorted by <b>arrival</b>, oldest first · switch to crisis mode to sort by severity score';
   const open = S.cases.filter(c => c.status !== 'resolved');
   const red = open.filter(c => c.tier === 0);
   const redWait = red.filter(c => c.status === 'saved').map(c => S.t - c.at).sort((a, b) => a - b);
@@ -1219,15 +1286,24 @@ new MutationObserver(applyMapTheme).observe(document.documentElement, { attribut
 
 /* ---------- start ---------- */
 boot();
+if (LIVE) {
+  const chip = document.querySelector('.chip.drill');
+  chip.textContent = 'Live · Retell + Supabase'; chip.title = 'Live assistance requests saved by Retell';
+  $('#clock').setAttribute('aria-label', 'Current time');
+  $('#playBtn').hidden = true; document.querySelector('.seg').hidden = true; $('#restartBtn').hidden = true;
+}
 renderAll();
+syncLiveCases();
 let started = false;
 const startMap = () => { if (started) return; started = true; initMap(); };
 (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(startMap);
 setTimeout(startMap, 1500);
 let tick = 0;
 setInterval(() => {
-  if (!S.paused) step(0.25 / SEC_PER_MIN);
+  if (LIVE) S.t = Date.now() / 60000;
+  else if (!S.paused) step(0.25 / SEC_PER_MIN);
   tick++;
+  if (LIVE && tick % 40 === 0) syncLiveCases();
   if (tick % 4 === 0) renderLive();
   if (tick % 8 === 0) renderAll();
 }, 250);
@@ -1235,6 +1311,3 @@ window.__nd = { get S() { return S; }, get map() { return map; } };
 })();
 
 </script>
-
-</body>
-</html>
