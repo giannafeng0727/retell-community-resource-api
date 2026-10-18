@@ -7,6 +7,47 @@ const languageName = value => ({ en:'English', 'en-US':'English', es:'Spanish', 
 const formatTime = value => value ? new Date(value).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '—';
 const statusText = value => ({ queued:'Queued', in_progress:'In progress', resolved:'Resolved', closed:'Closed', completed:'Completed' }[value] || value || 'Unknown');
 const assistanceNeed = row => row.medical_power_required ? 'Medical device power' : row.accessibility_required ? 'Accessibility assistance' : row.needs_transportation || row.resource_type === 'transportation' ? 'Transportation' : row.has_pet || row.has_service_animal ? 'Pet assistance' : ({ shelter:'Shelter', food:'Food', water:'Water', other:'Other assistance' }[row.resource_type] || 'Assistance');
+const ZIP_POINTS = { '90007':[-118.2851,34.0283], '90012':[-118.2437,34.0614], '90265':[-118.7798,34.0381], '90401':[-118.4912,34.0195], '91301':[-118.7584,34.1447] };
+const PLACE_POINTS = { malibu:[-118.7798,34.0381], zuma:[-118.826,34.0195], pepperdine:[-118.709,34.0425], santa_monica:[-118.4912,34.0195], downtown:[-118.2437,34.0522], usc:[-118.2851,34.0224] };
+let map = null, mapReady = false, markers = [], lastMapKey = '';
+
+function recordPoint(row) {
+  if (Number.isFinite(row.longitude) && Number.isFinite(row.latitude)) return [row.longitude,row.latitude];
+  const text = String(row.location || '').toLowerCase();
+  const zip = text.match(/\b9\d{4}\b/)?.[0]; if (zip && ZIP_POINTS[zip]) return ZIP_POINTS[zip];
+  if (text.includes('pepperdine')) return PLACE_POINTS.pepperdine;
+  if (text.includes('zuma')) return PLACE_POINTS.zuma;
+  if (text.includes('santa monica')) return PLACE_POINTS.santa_monica;
+  if (text.includes('downtown')) return PLACE_POINTS.downtown;
+  if (text.includes('usc')) return PLACE_POINTS.usc;
+  if (text.includes('malibu')) return PLACE_POINTS.malibu;
+  let hash=0; for(const ch of String(row.id||text))hash=(hash*31+ch.charCodeAt(0))>>>0;
+  return [-118.35+((hash%1000)/999-.5)*.34,34.04+(((hash>>>10)%1000)/999-.5)*.18];
+}
+function initMap() {
+  if (!window.maplibregl) { $('#map').textContent='Map could not load. The live queue is still available below.'; return; }
+  map = new maplibregl.Map({ container:'map', style:'https://demotiles.maplibre.org/style.json', center:[-118.32,34.04], zoom:9.4, attributionControl:true });
+  map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
+  map.on('load',()=>{mapReady=true;updateMap(true);});
+}
+function updateMap(force=false) {
+  if (!mapReady) return;
+  const key=state.records.map(r=>r.id).join('|');
+  for(const marker of markers)marker.remove(); markers=[];
+  const bounds=new maplibregl.LngLatBounds();
+  for(const record of state.records){
+    const point=recordPoint(record); bounds.extend(point);
+    const el=document.createElement('button'); el.type='button'; el.className=`record-marker ${record.recordType}${record.id===state.selected?' selected':''}`; el.setAttribute('aria-label',record.title);
+    el.addEventListener('click',e=>{e.stopPropagation();selectRecord(record.id,true);});
+    const popup=document.createElement('div'),title=document.createElement('b'),meta=document.createElement('span'); title.textContent=record.title; meta.textContent=`${record.need} · ${record.location}`; popup.append(title,meta);
+    markers.push(new maplibregl.Marker({element:el}).setLngLat(point).setPopup(new maplibregl.Popup({offset:14}).setDOMContent(popup)).addTo(map));
+  }
+  if((force||key!==lastMapKey)&&!bounds.isEmpty()){
+    if(state.records.length===1)map.easeTo({center:bounds.getCenter(),zoom:12,duration:0});
+    else map.fitBounds(bounds,{padding:70,maxZoom:12,duration:0});
+  }
+  lastMapKey=key;
+}
 
 function normalizeAssistance(row) {
   const tail = String(row.callback_number || '').replace(/\D/g, '').slice(-4);
@@ -31,7 +72,9 @@ function render() {
   const rows = filteredRecords();
   $('#rows').innerHTML = rows.length ? rows.map(r => `<li><button class="row${r.id === state.selected ? ' selected' : ''}" data-id="${esc(r.id)}"><span class="badge ${badgeClass(r)}">${esc(r.typeLabel)}</span><span><span class="primary">${esc(r.title)}</span><span class="secondary mono">${esc(r.phone)}</span></span><span class="location"><span class="primary">${esc(r.location)}</span><span class="secondary">${esc(r.need)}</span></span><span class="status"><span class="badge ${r.status === 'queued' ? 'queued' : ''}">${esc(statusText(r.status))}</span></span><span class="time">${esc(formatTime(r.created_at))}</span></button></li>`).join('') : '<li class="empty">No records match this view.</li>';
   renderDetail();
+  updateMap();
 }
+function selectRecord(id, scroll=false){state.selected=id;render();const r=state.records.find(x=>x.id===id);if(r&&mapReady)map.easeTo({center:recordPoint(r),zoom:12,duration:500});if(scroll&&innerWidth<850)$('#detail').scrollIntoView({behavior:'smooth'});}
 function fact(label, value, full = false) { return `<div class="fact${full ? ' full' : ''}"><label>${esc(label)}</label><div>${esc(value || '—')}</div></div>`; }
 function renderDetail() {
   const r = state.records.find(x => x.id === state.selected);
@@ -57,8 +100,8 @@ async function load() {
   finally { state.loading = false; $('#refresh').disabled = false; }
 }
 $('#tabs').addEventListener('click', e => { const b=e.target.closest('[data-filter]'); if(!b)return; state.filter=b.dataset.filter; render(); });
-$('#rows').addEventListener('click', e => { const b=e.target.closest('[data-id]'); if(!b)return; state.selected=b.dataset.id; render(); if(innerWidth<850)$('#detail').scrollIntoView({behavior:'smooth'}); });
+$('#rows').addEventListener('click', e => { const b=e.target.closest('[data-id]'); if(!b)return; selectRecord(b.dataset.id,true); });
 $('#search').addEventListener('input', e => { state.query=e.target.value; render(); });
 $('#refresh').addEventListener('click', load);
-load(); setInterval(load,10000);
+initMap(); load(); setInterval(load,10000);
 })();
