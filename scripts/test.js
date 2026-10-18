@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { searchResources, validateRequest } = require("../lib/search");
+const { inferMalibuCoordinates, searchResources, validateRequest } = require("../lib/search");
 
 const shelterRequest = {
   resource_type: "shelter",
@@ -45,6 +45,21 @@ const transportRequest = {
 const transportResult = searchResources(transportRequest);
 assert.equal(transportResult.result_count, 2);
 assert.equal(transportResult.results[0].resource_id, "zuma_pickup_demo");
+
+const spokenLocationResult = searchResources({
+  resource_type: "transportation",
+  location: "We are waiting at Zuma Beach parking lot 6",
+  people_count: 3,
+  has_pet: true,
+  max_distance_miles: 5
+});
+assert.equal(spokenLocationResult.location_resolution, "malibu_landmark");
+assert.equal(spokenLocationResult.results[0].resource_id, "zuma_pickup_demo");
+assert.deepEqual(inferMalibuCoordinates("Birdview Avenue near Point Dume"), {
+  latitude: 34.011,
+  longitude: -118.801
+});
+assert.equal(inferMalibuCoordinates("Downtown Los Angeles"), null);
 
 assert.equal(validateRequest({ resource_type: "unknown", location: "90007" }), "invalid_resource_type");
 assert.equal(validateRequest({ resource_type: "food", location: "" }), "location_required");

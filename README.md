@@ -12,7 +12,10 @@ The API supports two Retell custom functions:
 The resource search returns at most three matching shelter, food, water, or
 transportation options. The bundled catalog uses real Malibu-area place names
 and addresses, but every availability, capacity, phone number, and service
-detail is explicitly simulation-only.
+detail is explicitly simulation-only. If Retell sends a Malibu landmark or
+street name without coordinates, the demo resolves common locations such as
+Point Dume, Zuma Beach, Pepperdine, Latigo Canyon, and Corral Canyon locally so
+distance ranking still works.
 
 ## Project layout
 
