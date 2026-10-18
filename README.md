@@ -1,6 +1,10 @@
-# Retell Community Resource API — Node.js + Vercel
+# Retell Community Resource Platform — Frontend + Node.js API
 
-This Vercel API supports two Retell custom functions:
+This repository deploys the Night Desk supervisor console and its Retell-backed
+Vercel API as one project. The dashboard is served at `/`, while serverless API
+routes remain available under `/api`.
+
+The API supports two Retell custom functions:
 
 - `search_community_resources` searches short-term resources.
 - `create_assistance_callback` saves a consented callback request to Supabase.
@@ -8,10 +12,28 @@ This Vercel API supports two Retell custom functions:
 The resource search returns at most three matching shelter, food, water, or
 transportation options.
 
+## Project layout
+
+```text
+frontend/                     Static Night Desk supervisor console
+api/                          Vercel serverless function entry points
+lib/                          Shared backend logic
+scripts/                      Backend tests
+vercel.json                   Frontend route and function configuration
+```
+
 > All included organizations, addresses, and phone numbers are fictional demo
 > data. Replace them with verified sources before any real-world use.
 
-## Endpoint after deployment
+## URLs after deployment
+
+Supervisor console:
+
+```text
+https://YOUR-PROJECT.vercel.app/
+```
+
+Resource search endpoint:
 
 ```text
 POST https://YOUR-PROJECT.vercel.app/api/resources/search
@@ -67,15 +89,26 @@ server-only `SUPABASE_SECRET_KEY`.
 npm test
 ```
 
+To preview the frontend locally from the repository root:
+
+```bash
+python3 -m http.server 3000
+```
+
+Then open `http://localhost:3000/frontend/`. The production root route is
+handled by the rewrite in `vercel.json`.
+
 ## Deploy with the Vercel dashboard
 
-1. Put this folder in a GitHub repository.
-2. Sign in to Vercel and select **Add New → Project**.
-3. Import the repository.
-4. Keep the framework preset as **Other**.
-5. Add the `RESOURCE_API_KEY` environment variable.
-6. Select **Deploy**.
-7. Copy the production domain into the Retell API Endpoint field.
+1. Sign in to Vercel and select **Add New → Project**.
+2. Import this repository.
+3. Keep the framework preset as **Other** and the root directory as the
+   repository root.
+4. Add `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and
+   `RETELL_CALLBACK_API_KEY`.
+5. Select **Deploy**.
+6. Open the production domain to verify the dashboard, then copy the relevant
+   `/api/...` URLs into the Retell custom-function settings.
 
 ## Expected request body
 
