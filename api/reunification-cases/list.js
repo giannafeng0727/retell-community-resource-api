@@ -11,6 +11,8 @@ function publicRecord(row) {
     contact_number: row.contact_number,
     preferred_language: row.preferred_language,
     status: row.status,
+    match: row.metadata?.match || null,
+    notification_status: row.metadata?.notification_status || null,
     source_call_id: row.source_call_id,
     created_at: row.created_at,
     updated_at: row.updated_at

@@ -1,8 +1,13 @@
 const {
   buildReunificationRecord,
+  findBestReunificationMatch,
   validateReunificationCase
 } = require("../../lib/reunification");
-const { insertReunificationCase } = require("../../lib/supabase");
+const {
+  insertReunificationCase,
+  listReunificationCases,
+  updateReunificationCase
+} = require("../../lib/supabase");
 
 function isAuthorized(request) {
   const configuredKey = process.env.RETELL_CALLBACK_API_KEY;
@@ -27,14 +32,56 @@ module.exports = async function handler(request, response) {
   }
 
   try {
-    const saved = await insertReunificationCase(buildReunificationRecord(request.body));
+    const record = buildReunificationRecord(request.body);
+    const saved = await insertReunificationCase(record);
+    let match = null;
+    try {
+      const cases = await listReunificationCases(200);
+      const current = { ...record, ...saved };
+      const best = findBestReunificationMatch(current, cases.filter(row => !["resolved", "closed"].includes(row.status)));
+      if (best) {
+        const matchedAt = new Date().toISOString();
+        const currentMatch = {
+          case_id: best.case.id,
+          reference_code: best.case.reference_code,
+          case_type: best.case.case_type,
+          person_name: best.case.person_name,
+          person_location: best.case.person_location_approx,
+          contact_number: best.case.contact_number,
+          score: best.score,
+          reasons: best.reasons,
+          matched_at: matchedAt
+        };
+        const reverseMatch = {
+          case_id: saved.id,
+          reference_code: saved.reference_code,
+          case_type: record.case_type,
+          person_name: record.person_name,
+          person_location: record.person_location_approx,
+          contact_number: record.contact_number,
+          score: best.score,
+          reasons: best.reasons,
+          matched_at: matchedAt
+        };
+        await Promise.all([
+          updateReunificationCase(saved.id, { metadata: { ...record.metadata, match: currentMatch, notification_status: "ready_for_retell" } }),
+          updateReunificationCase(best.case.id, { metadata: { ...(best.case.metadata || {}), match: reverseMatch, notification_status: "ready_for_retell" } })
+        ]);
+        match = currentMatch;
+      }
+    } catch (matchError) {
+      console.error("Unable to match reunification case", { code: matchError.code || "match_failed", status: matchError.status || null });
+    }
     return response.status(201).json({
       success: true,
       case_id: saved.id,
       reference_code: saved.reference_code,
       case_type: saved.case_type,
-      status: saved.status,
-      created_at: saved.created_at
+      status: match ? "matched" : saved.status,
+      created_at: saved.created_at,
+      match_found: !!match,
+      match,
+      notification_status: match ? "ready_for_retell" : "not_applicable"
     });
   } catch (error) {
     console.error("Unable to create reunification case", {

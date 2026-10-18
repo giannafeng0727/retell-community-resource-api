@@ -62,7 +62,14 @@ Family reunification endpoints:
 ```text
 POST https://YOUR-PROJECT.vercel.app/api/reunification-cases/create
 GET  https://YOUR-PROJECT.vercel.app/api/reunification-cases/list
+POST https://YOUR-PROJECT.vercel.app/api/reunification-cases/update
 ```
+
+New `search_person` and `register_safe` cases are automatically compared using
+normalized names, phone numbers, and approximate locations. A confident match
+is stored in both records' metadata and returned to Retell with
+`notification_status: "ready_for_retell"`. The dashboard exposes a Family
+Reunification filter and persists take/resolve status changes.
 
 The dashboard polls both list endpoints every 10 seconds. The current deployment
 does not require dashboard authentication, so callback numbers, approximate

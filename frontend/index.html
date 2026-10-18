@@ -226,6 +226,7 @@ main{padding-block:16px 40px;display:flex;flex-direction:column;gap:16px}
 .st i{width:7px;height:7px;border-radius:50%;background:var(--faint)}
 .st.review i{background:var(--accent)}
 .st.resolved i{background:var(--ok)}
+.st.matched{color:var(--ok)}.st.matched i{background:var(--ok)}.match-card{background:color-mix(in srgb,var(--ok) 7%,var(--surface))}.match-card h4{color:var(--ok)}
 
 /* emergency page */
 .epage{padding-block:20px 48px}
@@ -861,18 +862,20 @@ function reunionCase(row, old) {
   const at = Number.isFinite(createdMs) ? S.t - Math.max(0, (Date.now() - createdMs) / 60000) : S.t;
   const resolved = ['resolved', 'closed', 'completed'].includes(String(row.status || '').toLowerCase());
   const safe = row.case_type === 'register_safe';
+  const matched = row.status === 'matched' || !!row.match;
+  const reviewing = ['in_progress', 'review', 'assigned'].includes(String(row.status || '').toLowerCase());
   const pointRow = { id: row.id, caller_location: row.person_location };
   const c = {
-    id: 'db-r-' + String(row.id), code: row.reference_code || String(row.id).slice(0, 8), kind: 'reunification', hot: 'live',
+    id: 'db-r-' + String(row.id), dbId: String(row.id), code: row.reference_code || String(row.id).slice(0, 8), kind: 'reunification', hot: 'live',
     name: row.person_name || 'Unnamed person', phone: row.contact_number || row.person_phone || 'Not provided',
     origin: 'us', lang: liveLanguage(row.preferred_language), visitor: false, home: 'Family reunification case', age: null, elderly: false,
     people: 1, kids: 0, need: safe ? 'info' : 'other', access: false, medpower: false, transport: false, pet: false,
     place: row.person_location || 'Location not provided', conf: 'approximate', loc: livePoint(pointRow), addr: row.person_location || 'Location not provided',
     at, calls: 1, danger: false, dangerAt: null, casualty: safe ? 'Person registered safe' : 'Person location not yet confirmed', bad: false, childAlone: false,
-    status: resolved ? 'resolved' : 'saved', rep: null, resolvedAt: resolved ? S.t : null, reason: resolved ? 'Completed in Supabase' : null,
+    status: resolved ? 'resolved' : matched ? 'matched' : reviewing ? 'review' : 'saved', rep: reviewing ? 'Rep 00 · Coordinator' : null, resolvedAt: resolved ? S.t : null, reason: resolved ? 'Completed in Supabase' : null,
     timeline: [[at, `Family reunification case saved by Retell · ${row.reference_code || row.id}`]],
     convo: [['c', safe ? `${row.person_name || 'The person'} registered safe at ${row.person_location || 'an unspecified location'}.` : `Looking for ${row.person_name || 'a family member'} near ${row.person_location || 'an unspecified location'}.`], ['a', `Family reunification case saved for coordinator follow-up${row.reference_code ? ' · ' + row.reference_code : ''}.`]],
-    live: true, sourceLabel: 'LIVE DB · Reunification', isNew: !old
+    live: true, sourceLabel: 'LIVE DB · Reunification', match: row.match || null, notificationStatus: row.notification_status || null, isNew: !old
   };
   score(c); c.tier = safe ? 4 : Math.min(c.tier, 2); return c;
 }
@@ -912,6 +915,7 @@ const FILTERS = [
   ['open', 'All open', c => c.status !== 'resolved'],
   ['person', 'Needs a person', c => c.status !== 'resolved' && c.tier <= 2],
   ['red', 'Red flags', c => c.status !== 'resolved' && c.tier === 0],
+  ['family', 'Family reunification', c => c.status !== 'resolved' && c.kind === 'reunification'],
   ['kids', 'Children', c => c.status !== 'resolved' && c.kids > 0],
   ['elderly', '65+', c => c.status !== 'resolved' && c.elderly],
   ['resolved', 'Resolved', c => c.status === 'resolved']
@@ -920,6 +924,7 @@ const short = l => ({ Spanish: 'ES', Mandarin: 'ZH', Korean: 'KO', Japanese: 'JA
 const tierStyle = k => `--tc:var(--t${k})`;
 function statusLabel(c) {
   if (c.status === 'resolved') return '<span class="st resolved"><i></i>Resolved</span>';
+  if (c.status === 'matched') return '<span class="st matched"><i></i>Match found</span>';
   if (c.status === 'review') return `<span class="st review"><i></i>In review · ${esc(c.rep === 'You' ? 'you' : c.rep.split(' · ')[1])}</span>`;
   return `<span class="st"><i></i>${c.aiDone ? 'Saved · AI answered' : 'Saved'}</span>`;
 }
@@ -1024,9 +1029,10 @@ ${dt}
 </div>
 <div class="psec"><h4>Conversation</h4><div class="convo">${c.convo.map(l => `<p class="${l[0]}"><span class="sp">${l[0] === 'c' ? 'Caller' : 'Agent'}</span>${esc(l[1])}</p>`).join('')}</div></div>
 ${c.need !== 'info' ? `<div class="psec"><h4>Suggested resource</h4><div class="res"><b>${esc(r.name)}</b><span class="m">${esc(r.address)}</span><span class="m">${r.capacity_remaining} places left · ${r.accepts_pets ? 'takes pets' : 'no pets'} · ${r.languages.join(', ')}</span></div></div>` : ''}
+${c.match ? `<div class="psec match-card"><h4>Family match found</h4><div class="res"><b>${esc(c.match.person_name || 'Matching case')}</b><span class="m">${esc(c.match.reference_code || c.match.case_id)}</span><span class="m">${esc(c.match.person_location || 'Location not provided')} · confidence ${esc(c.match.score)}%</span><span class="m">Retell notification: ${esc(c.notificationStatus || 'ready')}</span></div></div>` : ''}
 <div class="psec"><h4>Timeline</h4><ol class="tline">${c.timeline.map(e => `<li><time>${fmt(e[0])}</time><span>${esc(e[1])}</span></li>`).join('')}</ol></div>
 ${open ? `<div class="pact">
-  ${c.status === 'saved' ? '<button type="button" class="btn sm primary" data-act="take">Take this case</button>' : ''}
+  ${c.status === 'saved' || c.status === 'matched' ? '<button type="button" class="btn sm primary" data-act="take">Take this case</button>' : ''}
   <button type="button" class="btn sm" data-act="field">${c.field ? 'Field check sent' : 'Send field check'}</button>
   <div class="resolve"><select id="reason" aria-label="Reason for resolving"><option value="">Resolve with a reason…</option><option>Reached, leaving now</option><option>Ride out arranged</option><option>Sent to an evacuation center</option><option>Referred to 911</option><option>Duplicate of another case</option></select><button type="button" class="btn sm" data-act="resolve">Resolve</button></div>
 </div>` : `<div class="pact"><span class="st resolved"><i></i>Resolved at ${fmt(c.resolvedAt)} · ${esc(c.reason)}</span></div>`}`;
@@ -1294,13 +1300,29 @@ document.addEventListener('keydown', e => {
 $('#moreBtn').addEventListener('click', () => { S.limit += 40; renderList(true); });
 $('#filters').addEventListener('click', e => { const b = e.target.closest('.fbtn'); if (!b) return; S.filter = b.dataset.f; S.limit = 40; renderList(true); });
 $('#filters').addEventListener('input', e => { if (e.target.id === 'q') { S.q = e.target.value; S.limit = 40; qFocus = true; renderList(true); qFocus = false; } });
-$('#profile').addEventListener('click', e => {
+async function persistReunionStatus(c, status) {
+  if (!c.live || c.kind !== 'reunification' || !c.dbId) return;
+  const response = await fetch('/api/reunification-cases/update', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: c.dbId, status })
+  });
+  const body = await response.json();
+  if (!response.ok || !body.success) throw new Error(body.error || 'Unable to update case');
+}
+$('#profile').addEventListener('click', async e => {
   const c = byId(S.sel); if (!c) return;
   if (e.target.id === 'copyPhone') { const done = () => toast('Phone number copied.'); try { navigator.clipboard.writeText(c.phone).then(done, () => toast('Copy isn’t available here. Select the number instead.')); } catch (err) { toast('Copy isn’t available here. Select the number instead.'); } return; }
   const a = e.target.closest('[data-act]'); if (!a) return;
-  if (a.dataset.act === 'take') { c.status = 'review'; c.rep = 'You'; c.reviewAt = S.t; c.timeline.push([S.t, 'You took the case']); toast('You took ' + c.name + '’s case.'); }
+  if (a.dataset.act === 'take') {
+    try { await persistReunionStatus(c, 'in_progress'); c.status = 'review'; c.rep = 'You'; c.reviewAt = S.t; c.timeline.push([S.t, 'You took the case']); toast('You took ' + c.name + '’s case.'); }
+    catch (error) { toast('Could not save the assignment: ' + error.message); return; }
+  }
   if (a.dataset.act === 'field' && !c.field) { c.field = true; c.timeline.push([S.t, 'Field check requested from LA County Fire']); toast('Field check requested.'); }
-  if (a.dataset.act === 'resolve') { const r = $('#reason').value; if (!r) { toast('Choose a reason before resolving.'); $('#reason').focus(); return; } resolveCase(c, r, 'you', S.t); toast('Case resolved.'); }
+  if (a.dataset.act === 'resolve') {
+    const r = $('#reason').value; if (!r) { toast('Choose a reason before resolving.'); $('#reason').focus(); return; }
+    try { await persistReunionStatus(c, 'resolved'); resolveCase(c, r, 'you', S.t); toast(c.kind === 'reunification' ? 'Family case resolved and saved.' : 'Case resolved.'); }
+    catch (error) { toast('Could not save the resolution: ' + error.message); return; }
+  }
   renderAll();
 });
 $('#openEmergency').addEventListener('click', () => show('emergency'));

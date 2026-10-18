@@ -2,7 +2,8 @@ const assert = require("node:assert/strict");
 const {
   insertAssistanceRequest,
   listAssistanceRequests,
-  listReunificationCases
+  listReunificationCases,
+  updateReunificationCase
 } = require("../lib/supabase");
 const listAssistanceHandler = require("../api/assistance-requests/list");
 
@@ -53,6 +54,12 @@ global.fetch = async (url, options) => {
   assert.equal(capturedRequest.options.method, "GET");
   assert.equal(capturedRequest.url.includes("/rest/v1/reunification_cases?"), true);
   assert.equal(capturedRequest.url.includes("limit=5"), true);
+
+  await updateReunificationCase("case-id", { status: "resolved" });
+  assert.equal(capturedRequest.options.method, "PATCH");
+  assert.equal(capturedRequest.url.includes("id=eq.case-id"), true);
+  assert.equal(JSON.parse(capturedRequest.options.body).status, "resolved");
+  assert.equal(capturedRequest.options.headers.Prefer, "return=representation");
 
   const headers = {};
   let responseBody;
