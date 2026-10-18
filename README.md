@@ -10,7 +10,9 @@ The API supports two Retell custom functions:
 - `create_assistance_callback` saves a consented callback request to Supabase.
 
 The resource search returns at most three matching shelter, food, water, or
-transportation options.
+transportation options. The bundled catalog uses real Malibu-area place names
+and addresses, but every availability, capacity, phone number, and service
+detail is explicitly simulation-only.
 
 ## Project layout
 
@@ -140,7 +142,11 @@ handled by the rewrite in `vercel.json`.
 ```json
 {
   "resource_type": "shelter",
-  "location": "90007",
+  "location": "Malibu Civic Center",
+  "coordinates": {
+    "latitude": 34.0366,
+    "longitude": -118.6874
+  },
   "people_count": 3,
   "children_count": 1,
   "accessibility_required": false,
