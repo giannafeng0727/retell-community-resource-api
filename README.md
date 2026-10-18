@@ -57,9 +57,17 @@ Live dashboard data endpoint:
 GET https://YOUR-PROJECT.vercel.app/api/assistance-requests/list
 ```
 
-The dashboard polls this endpoint every 10 seconds. The current deployment does
-not require dashboard authentication, so callback numbers and approximate
-locations returned by this endpoint are publicly accessible.
+Family reunification endpoints:
+
+```text
+POST https://YOUR-PROJECT.vercel.app/api/reunification-cases/create
+GET  https://YOUR-PROJECT.vercel.app/api/reunification-cases/list
+```
+
+The dashboard polls both list endpoints every 10 seconds. The current deployment
+does not require dashboard authentication, so callback numbers, approximate
+locations, and reunification records returned by these endpoints are publicly
+accessible.
 
 The callback endpoint requires `Authorization: Bearer RETELL_CALLBACK_API_KEY`.
 It rejects immediate-danger requests because emergency escalation must happen

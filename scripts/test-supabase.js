@@ -1,5 +1,9 @@
 const assert = require("node:assert/strict");
-const { insertAssistanceRequest, listAssistanceRequests } = require("../lib/supabase");
+const {
+  insertAssistanceRequest,
+  listAssistanceRequests,
+  listReunificationCases
+} = require("../lib/supabase");
 const listAssistanceHandler = require("../api/assistance-requests/list");
 
 process.env.SUPABASE_URL = "https://example.supabase.co";
@@ -44,6 +48,11 @@ global.fetch = async (url, options) => {
   assert.equal("Authorization" in capturedRequest.options.headers, false);
   assert.equal(capturedRequest.url.includes("order=created_at.desc"), true);
   assert.equal(capturedRequest.url.includes("limit=200"), true);
+
+  await listReunificationCases(5);
+  assert.equal(capturedRequest.options.method, "GET");
+  assert.equal(capturedRequest.url.includes("/rest/v1/reunification_cases?"), true);
+  assert.equal(capturedRequest.url.includes("limit=5"), true);
 
   const headers = {};
   let responseBody;
